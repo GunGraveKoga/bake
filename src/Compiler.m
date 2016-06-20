@@ -15,26 +15,24 @@
 			  target: (Target*)target
 {
 	file = [file stringByAppendingString: @".o"];
-	return [OFString stringWithPath: @"pastries", [target name], file, nil];
+	return [OFString pathWithComponents: @[@"pastries", [target name], file]];
 }
 
 - (OFString*)outputFileForTarget: (Target*)target
 {
 	OFString *last = [[target name] lastPathComponent];
-	return [OFString stringWithPath: @"pastries", [target name], last, nil];
+	return [OFString pathWithComponents: @[@"pastries", [target name], last]];
 }
 
 - (void)compileFile: (OFString*)file
 	     target: (Target*)target
 {
-	@throw [OFNotImplementedException exceptionWithClass: [self class]
-						    selector: _cmd];
+	@throw [OFNotImplementedException exceptionWithSelector: _cmd object: self];
 }
 
 - (void)linkTarget: (Target*)target
 	extraFlags: (OFString*)extraFlags
 {
-	@throw [OFNotImplementedException exceptionWithClass: [self class]
-						    selector: _cmd];
+	@throw [OFNotImplementedException exceptionWithSelector: _cmd object: self];
 }
 @end

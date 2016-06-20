@@ -1,4 +1,4 @@
 #import <ObjFW/ObjFW.h>
 
-@interface CircularDependencyException: OFException
+@interface CircularDependencyException: OFInitializationFailedException
 @end

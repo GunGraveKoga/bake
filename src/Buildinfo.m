@@ -12,8 +12,10 @@
 
 	KEEP_IF_KIND_IS(ingredients, @"ingredients", retain, OFArray)
 	debug = [[info objectForKey: @"debug"] boolValue];
+	KEEP_IF_KIND_IS(platform, @"platform", copy, OFString)
 	KEEP_IF_KIND_IS(objC, @"objc", copy, OFString)
 	KEEP_IF_KIND_IS(objCFlags, @"objcflags", mutableCopy, OFArray)
+	KEEP_IF_KIND_IS(systemIncludes, @"sysincludedirs", mutableCopy, OFArray)
 	KEEP_IF_KIND_IS(includeDirs, @"includedirs", mutableCopy, OFArray)
 	KEEP_IF_KIND_IS(defines, @"defines", mutableCopy, OFArray)
 	KEEP_IF_KIND_IS(libs, @"libs", mutableCopy, OFArray)
@@ -40,12 +42,18 @@
 
 	debug |= [info debug];
 
+	if ((tmp = [info platform]) != nil) {
+		[platform release];
+		platform = [tmp copy];
+	}
+
 	if ((tmp = [info objC]) != nil) {
 		[objC release];
 		objC = [tmp copy];
 	}
 
 	INHERIT_ARRAY(objCFlags)
+	INHERIT_ARRAY(systemIncludes)
 	INHERIT_ARRAY(includeDirs)
 	INHERIT_ARRAY(defines)
 	INHERIT_ARRAY(libs)
@@ -58,6 +66,7 @@
 - (void)dealloc
 {
 	[ingredients release];
+	[platform release];
 	[objC release];
 	[objCFlags release];
 	[includeDirs release];
@@ -112,5 +121,15 @@
 - (OFArray*)conditionals
 {
 	return conditionals;
+}
+
+- (OFString*)platform
+{
+	return platform;
+}
+
+- (OFArray*)systemIncludes
+{
+	return systemIncludes;
 }
 @end

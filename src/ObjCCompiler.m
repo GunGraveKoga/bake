@@ -39,9 +39,22 @@ static ObjCCompiler *sharedCompiler = nil;
 						  target: target];
 	OFString *dir = [objectFile stringByDeletingLastPathComponent];
 
-	if (![OFFile directoryExistsAtPath: dir])
-		[OFFile createDirectoryAtPath: dir
+	OFFileManager* fm = [OFFileManager defaultManager];
+
+	if (![fm directoryExistsAtPath: dir])
+		[fm createDirectoryAtPath: dir
 				createParents: YES];
+
+	if ([target platform] != nil) {
+		[command appendString: @" --target="];
+		[command appendString: [target platform]];
+	}
+
+	if ([target systemIncludes] != nil && [[target systemIncludes] count] > 0) {
+		[command appendString: @" -isystem "];
+		[command appendString:
+		    [[target systemIncludes] componentsJoinedByString: @" -isystem "]];
+	}
 
 	if ([target debug])
 		[command appendString: @" -g"];
@@ -69,7 +82,7 @@ static ObjCCompiler *sharedCompiler = nil;
 	if ([(Bake*)[[OFApplication sharedApplication] delegate] verbose])
 		[of_stdout writeLine: command];
 
-	if (system([command cStringWithEncoding: OF_STRING_ENCODING_NATIVE]))
+	if (system([command lossyCStringWithEncoding:OF_STRING_ENCODING_WINDOWS_1252]))
 		@throw [CompilationFailedException
 		    exceptionWithClass: [self class]
 			       command: command];
@@ -82,10 +95,16 @@ static ObjCCompiler *sharedCompiler = nil;
 	OFString *outputFile = [self outputFileForTarget: target];
 	OFString *file, *dir = [outputFile stringByDeletingLastPathComponent];
 	OFEnumerator *enumerator;
+	OFFileManager* fm = [OFFileManager defaultManager];
 
-	if (![OFFile directoryExistsAtPath: dir])
-		[OFFile createDirectoryAtPath: dir
+	if (![fm directoryExistsAtPath: dir])
+		[fm createDirectoryAtPath: dir
 				createParents: YES];
+
+	if ([target platform] != nil) {
+		[command appendString: @" --target="];
+		[command appendString: [target platform]];
+	}
 
 	if ([target debug])
 		[command appendString: @" -g"];
@@ -120,7 +139,7 @@ static ObjCCompiler *sharedCompiler = nil;
 	if ([(Bake*)[[OFApplication sharedApplication] delegate] verbose])
 		[of_stdout writeLine: command];
 
-	if (system([command cStringWithEncoding: OF_STRING_ENCODING_NATIVE]))
+	if (system([command lossyCStringWithEncoding:OF_STRING_ENCODING_WINDOWS_1252]))
 		@throw [LinkingFailedException exceptionWithClass: [self class]
 							  command: command];
 }

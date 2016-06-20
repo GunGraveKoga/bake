@@ -39,15 +39,16 @@ static OFMutableDictionary *ingredients = nil;
 + findIngredient: (OFString*)name
 {
 	OFString *path;
+	OFFileManager* fm = [OFFileManager defaultManager];
 
 	name = [name stringByAppendingString: @".ingredient"];
 
-	path = [OFString stringWithPath: @"ingredients", name, nil];
-	if ([OFFile fileExistsAtPath: path])
+	path = [OFString pathWithComponents: @[@"ingredients", name]];
+	if ([fm fileExistsAtPath: path])
 		return path;
 
-	path = [OFString stringWithPath: INGREDIENTS_DIR, name, nil];
-	if ([OFFile fileExistsAtPath: path])
+	path = [OFString pathWithComponents: @[INGREDIENTS_DIR, name]];
+	if ([fm fileExistsAtPath: path])  
 		return path;
 
 	return nil;
@@ -64,12 +65,10 @@ static OFMutableDictionary *ingredients = nil;
 		id tmp;
 
 		if (![ingredient isKindOfClass: [OFDictionary class]])
-			@throw [OFInvalidFormatException
-			    exceptionWithClass: [self class]];
+			@throw [OFInvalidFormatException exception];
 
 		if ((tmp = [ingredient objectForKey: @"ingredient"]) == nil)
-			@throw [OFInvalidFormatException
-			    exceptionWithClass: [self class]];
+			@throw [OFInvalidFormatException exception];
 
 		if ((tmp = [tmp objectForKey: @"version"]) != nil) {
 			if (![tmp isKindOfClass: [OFNumber class]] ||

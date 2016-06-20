@@ -1,6 +1,6 @@
 #import <ObjFW/ObjFW.h>
 
-@interface MissingDependencyException: OFException
+@interface MissingDependencyException: OFInitializationFailedException
 {
 	OFString *dependencyName;
 }

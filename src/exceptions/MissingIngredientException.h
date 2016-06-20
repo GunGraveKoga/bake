@@ -1,6 +1,6 @@
 #import <ObjFW/ObjFW.h>
 
-@interface MissingIngredientException: OFException
+@interface MissingIngredientException: OFInitializationFailedException
 {
 	OFString *ingredientName;
 }

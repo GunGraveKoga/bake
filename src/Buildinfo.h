@@ -4,8 +4,9 @@
 {
 	OFMutableArray *ingredients;
 	BOOL debug;
+	OFString* platform;
 	OFString *objC;
-	OFMutableArray *objCFlags, *includeDirs, *defines, *libs, *libDirs;
+	OFMutableArray *objCFlags, *systemIncludes, *includeDirs, *defines, *libs, *libDirs;
 	OFMutableArray *conditionals;
 }
 
@@ -13,8 +14,10 @@
 - (void)inheritBuildinfo: (Buildinfo*)info;
 - (OFArray*)ingredients;
 - (BOOL)debug;
+- (OFString*)platform;
 - (OFString*)objC;
 - (OFArray*)objCFlags;
+- (OFArray*)systemIncludes;
 - (OFArray*)includeDirs;
 - (OFArray*)defines;
 - (OFArray*)libs;

@@ -6,8 +6,7 @@
 {
 	Class c = [self class];
 	[self release];
-	@throw [OFNotImplementedException exceptionWithClass: c
-						    selector: _cmd];
+	@throw [OFNotImplementedException exceptionWithSelector: _cmd object: c];
 }
 
 - initWithName: (OFString*)name_
@@ -67,8 +66,8 @@
 			fileEnumerator = [filesInDir objectEnumerator];
 
 			while ((file = [fileEnumerator nextObject]) != nil) {
-				OFString *path = [OFString stringWithPath:
-				    dir, file, nil];
+				OFString *path = [OFString pathWithComponents:
+				    @[dir, file]];
 
 				[files addObject: path];
 			}

@@ -14,19 +14,16 @@
 		id tmp;
 
 		if (![recipe isKindOfClass: [OFDictionary class]])
-			@throw [OFInvalidFormatException
-			    exceptionWithClass: [self class]];
+			@throw [OFInvalidFormatException exception];
 
 		if ((tmp = [recipe objectForKey: @"recipe"]) == nil)
-			@throw [OFInvalidFormatException
-			    exceptionWithClass: [self class]];
+			@throw [OFInvalidFormatException exception];
 
 		if ((tmp = [tmp objectForKey: @"version"]) != nil) {
 			if (![tmp isKindOfClass: [OFNumber class]] ||
 			    [tmp intValue] != 1)
 				// FIXME: Include file name
-				@throw [WrongVersionException
-				    exceptionWithClass: [self class]];
+				@throw [WrongVersionException exceptionWithClass: [self class]];
 		} else
 			[of_stderr writeLine: @"Warning: Recipe is lacking a "
 					      @"version!"];

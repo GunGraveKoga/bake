@@ -1,4 +1,4 @@
 #import <ObjFW/ObjFW.h>
 
-@interface WrongVersionException: OFException
+@interface WrongVersionException: OFInitializationFailedException
 @end

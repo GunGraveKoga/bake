@@ -1,6 +1,6 @@
 #import <ObjFW/ObjFW.h>
 
-@interface CommandFailedException: OFException
+@interface CommandFailedException: OFInitializationFailedException
 {
 	OFString *command;
 }

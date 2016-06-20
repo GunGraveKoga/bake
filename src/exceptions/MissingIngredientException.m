@@ -27,8 +27,7 @@
 {
 	Class c = [self class];
 	[self release];
-	@throw [OFNotImplementedException exceptionWithClass: c
-						    selector: _cmd];
+	@throw [OFNotImplementedException exceptionWithSelector: _cmd object: c];
 }
 
 - (void)dealloc

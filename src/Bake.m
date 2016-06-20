@@ -25,9 +25,28 @@ OF_APPLICATION_DELEGATE(Bake)
 	BOOL install;
 	OFString *prefix = @"/usr/local";
 	OFString *bindir = [prefix stringByAppendingString: @"/bin"];
+	OFString *includedir = [prefix stringByAppendingString: @"/include"];
+	OFString *libdir = [prefix stringByAppendingString: @"/lib"];
 
 	arguments = [OFApplication arguments];
 	install = [arguments containsObject: @"--install"];
+
+	if ([arguments containsObject:@"--prefix"]) {
+		size_t idx = [arguments indexOfObject:@"--prefix"];
+		OFString* oldprefix = prefix;
+		OFString* oldbindir = bindir;
+		OFString* oldlibdir = libdir;
+		OFString* oldincdir = includedir;
+		prefix = [arguments objectAtIndex: idx + 1];
+		bindir = [prefix stringByAppendingString: @"/bin"];
+		includedir = [prefix stringByAppendingString: @"/include"];
+		libdir = [prefix stringByAppendingString: @"/lib"];
+		of_log(@"Find prefix %@", prefix);
+		[oldprefix release];
+		[oldbindir release];
+		[oldincdir release];
+		[oldlibdir release];
+	}
 
 	if ([arguments containsObject: @"--produce-ingredient"]) {
 		IngredientProducer *producer;
@@ -52,7 +71,7 @@ OF_APPLICATION_DELEGATE(Bake)
 
 	@try {
 		recipe = [[Recipe alloc] init];
-	} @catch (OFOpenFileFailedException *e) {
+	} @catch (OFOpenItemFailedException *e) {
 		[of_stderr writeLine: @"Error: Could not find Recipe!"];
 		[OFApplication terminateWithStatus: 1];
 	} @catch (OFInvalidJSONException *e) {
@@ -97,6 +116,7 @@ OF_APPLICATION_DELEGATE(Bake)
 		OFString *file;
 		size_t i = 0;
 		BOOL link = NO;
+		OFFileManager* fm = [OFFileManager defaultManager];
 
 		[target resolveConditionals: conditions];
 
@@ -148,7 +168,7 @@ OF_APPLICATION_DELEGATE(Bake)
 		}
 
 		if (link || ([[target files] count] > 0 &&
-		    ![OFFile fileExistsAtPath: [[ObjCCompiler sharedCompiler]
+		    ![fm fileExistsAtPath: [[ObjCCompiler sharedCompiler]
 		    outputFileForTarget: target]])) {
 			if (!verbose)
 				[of_stdout writeFormat:
@@ -183,19 +203,33 @@ OF_APPLICATION_DELEGATE(Bake)
 		if (install && [[target files] count] > 0) {
 			OFString *file = [[ObjCCompiler sharedCompiler]
 			    outputFileForTarget: target];
-			OFString *destination = [OFString stringWithPath:
-			    bindir, [file lastPathComponent], nil];
+			OFString *destination = [OFString pathWithComponents:
+			    @[bindir, [file lastPathComponent]]];
 
 
 			[of_stdout writeFormat: @"Installing: %@ -> %@\n",
-						file, destination];
+						file, [destination stringByStandardizingPath]];
 
-			if (![OFFile directoryExistsAtPath: bindir])
-				[OFFile createDirectoryAtPath: bindir
-						createParents: YES];
-
-			[OFFile copyFileAtPath: file
-					toPath: destination];
+			if (![fm directoryExistsAtPath: bindir]) {
+				[of_stdout writeFormat: @"Creating directory: %@\n",
+						[destination stringByStandardizingPath]];
+				@try {
+					[fm createDirectoryAtPath: [bindir stringByStandardizingPath]
+						createParents: NO];
+				}@catch(OFCreateDirectoryFailedException* e) {
+					[of_stdout writeFormat: @"Faild creating directory: %@\n",
+						[e path]];
+					[OFApplication terminateWithStatus:-1];
+				}
+			}
+			@try {
+				[fm copyItemAtPath: file
+					toPath: [destination stringByStandardizingPath]];
+			}@catch(OFCopyItemFailedException* e) {
+				[of_stdout writeFormat: @"Faild copy %@ to directory: %@ (Error: %d)\n",
+						[e sourcePath], [e destinationPath], [e errNo]];
+					[OFApplication terminateWithStatus:-1];
+			}
 		}
 	}
 
@@ -204,16 +238,17 @@ OF_APPLICATION_DELEGATE(Bake)
 
 - (void)findRecipe
 {
-	OFString *oldPath = [OFFile currentDirectoryPath];
+	OFFileManager* fm = [OFFileManager defaultManager];
+	OFString *oldPath = [fm currentDirectoryPath];
 
-	while (![OFFile fileExistsAtPath: @"Recipe"]) {
-		[OFFile changeToDirectoryAtPath: OF_PATH_PARENT_DIRECTORY];
+	while (![fm fileExistsAtPath: @"Recipe"]) {
+		[fm changeCurrentDirectoryPath: OF_PATH_PARENT_DIRECTORY];
 
 		/* We reached the file system root */
-		if ([[OFFile currentDirectoryPath] isEqual: oldPath])
+		if ([[fm currentDirectoryPath] isEqual: oldPath])
 			break;
 
-		oldPath = [OFFile currentDirectoryPath];
+		oldPath = [fm currentDirectoryPath];
 	}
 }
 
@@ -224,6 +259,8 @@ OF_APPLICATION_DELEGATE(Bake)
 	OFString *objectFile;
 	OFDate *sourceDate, *objectDate;
 
+	OFFileManager* fm = [OFFileManager defaultManager];
+
 	if (rebake)
 		return YES;
 
@@ -232,11 +269,11 @@ OF_APPLICATION_DELEGATE(Bake)
 	objectFile = [compiler objectFileForSource: file
 					    target: target];
 
-	if (![OFFile fileExistsAtPath: objectFile])
+	if (![fm fileExistsAtPath: objectFile])
 		return YES;
 
-	sourceDate = [OFFile modificationDateOfFileAtPath: file];
-	objectDate = [OFFile modificationDateOfFileAtPath: objectFile];
+	sourceDate = [fm statusChangeTimeOfItemAtPath: file];
+	objectDate = [fm statusChangeTimeOfItemAtPath: objectFile];
 
 	return ([objectDate compare: sourceDate] == OF_ORDERED_ASCENDING);
 }
