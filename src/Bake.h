@@ -21,4 +21,6 @@
 - (BOOL)shouldRebuildFile: (OFString*)file
 		   target: (Target*)target;
 
+- (void)produceIngredientWithArguments:(OFArray OF_GENERIC(OFString*) *)arguments;
+
 @end

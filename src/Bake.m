@@ -39,7 +39,6 @@ OF_APPLICATION_DELEGATE(Bake)
 {
 	OFSet *conditions;
 	DependencySolver *dependencySolver;
-	OFEnumerator *enumerator;
 
 	OFArray *targetOrder;
 
@@ -51,11 +50,11 @@ OF_APPLICATION_DELEGATE(Bake)
 
 	const of_options_parser_option_t options[] = {
 		{ 'h', @"help", 0, NULL, NULL },
-		{ 'v', @"verbose", 0, &_verbose, NULL},
-		{ 'r', @"rebake", 0, &_rebake, NULL},
-		{ '\0', @"produce-ingredient", 0, &_produceIngredient, NULL},
+		{ 'v', @"verbose", 0, (bool *)&_verbose, NULL},
+		{ 'r', @"rebake", 0, (bool *)&_rebake, NULL},
+		{ '\0', @"produce-ingredient", 0, (bool *)&_produceIngredient, NULL},
 		{ '\0', @"prefix", 1, NULL, &prefix_},
-		{ '\0', @"install", 0, &_install, NULL},
+		{ '\0', @"install", 0, (bool *)&_install, NULL},
 		{ '\0', nil, 0, NULL, NULL }
 	};
 
@@ -76,6 +75,9 @@ OF_APPLICATION_DELEGATE(Bake)
 				[OFApplication terminateWithStatus:1];
 				break;
 			case '?':
+				if (self.produceIngredient)
+					[self produceIngredientWithArguments:[optionParser remainingArguments]];
+
 				if ([optionParser lastLongOption] != nil)
 					[of_stderr writeFormat:@"%@: Unknown option: --%@\n",
 						[OFApplication programName],
@@ -90,26 +92,6 @@ OF_APPLICATION_DELEGATE(Bake)
 		}
 	}
 
-	if (self.produceIngredient) {
-		OFArray OF_GENERIC(OFString*) *remainingArguments;
-		arguments = [optionParser remainingArguments];
-
-		if (arguments.count <= 0) {
-			[of_stderr writeLine:@"Empty ingredient argument!\n"];
-			[OFApplication terminateWithStatus:1];
-		}
-
-		IngredientProducer* producer = [IngredientProducer new];
-
-		for (OFString* argument in arguments) {
-			[producer parseArgument:argument];
-		}
-
-		[of_stdout writeLine:[[producer ingredient] JSONRepresentation]];
-
-		[OFApplication terminate];
-	}
-
 	if (prefix_ != nil)
 		self.prefix = prefix_;
 	else
@@ -119,7 +101,7 @@ OF_APPLICATION_DELEGATE(Bake)
 	includedir = [self.prefix stringByAppendingString:@"/include"];
 	libdir = [self.prefix stringByAppendingString:@"/lib"];
 
-	of_log(@"Find prefix %@", prefix);
+	of_log(@"Find prefix %@", self.prefix);
 
 	[self findRecipe];
 
@@ -188,7 +170,7 @@ OF_APPLICATION_DELEGATE(Bake)
 
 				link = YES;
 
-				if (self.verbose)
+				if (!self.verbose)
 					[of_stdout writeFormat:@"\r%@: %zd/%zd",
 						[target name], i,
 						[[target files] count]];
@@ -212,7 +194,7 @@ OF_APPLICATION_DELEGATE(Bake)
 
 				i++;
 
-				if (self.verbose)
+				if (!self.verbose)
 					[of_stdout writeFormat:@"\r%@: %zd/%zd",
 						[target name], i,
 						[[target files] count]];
@@ -220,7 +202,7 @@ OF_APPLICATION_DELEGATE(Bake)
 		}
 
 		if (link || ([[target files] count] > 0 && ![fm fileExistsAtPath:[[ObjCCompiler sharedCompiler] outputFileForTarget:target]])) {
-			if (self.verbose)
+			if (!self.verbose)
 				[of_stdout writeFormat:@"\r%@: %zd/%zd (linking)",
 					[target name], i, [[target files] count]];
 
@@ -243,7 +225,7 @@ OF_APPLICATION_DELEGATE(Bake)
 
 			}
 
-			if (self.verbose)
+			if (!self.verbose)
 				[of_stdout writeFormat:
 					@"\r%@: %zd/%zd (success)\n",
 					[target name], i, [[target files] count]];
@@ -253,20 +235,25 @@ OF_APPLICATION_DELEGATE(Bake)
 		}
 
 		if (self.install && [[target files] count] > 0) {
+			bindir = [bindir stringByStandardizingPath];
+			libdir = [libdir stringByStandardizingPath];
+			includedir = [includedir stringByStandardizingPath];
+
 			OFString* file = [[ObjCCompiler sharedCompiler] outputFileForTarget:target];
 			OFString* destination = [OFString pathWithComponents:@[bindir, [file lastPathComponent]]];
+			destination = [destination stringByStandardizingPath];
 
 			[of_stdout writeFormat:@"Installing: %@ -> %@\n",
-				file, [destination stringByStandardizingPath]];
+				file, destination];
 
 			if (![fm directoryExistsAtPath:bindir]) {
-				[of_stdout writeFormat:@"Creating directory: %@\n", [bindir stringByStandardizingPath]];
+				[of_stdout writeFormat:@"Creating directory: %@\n", bindir];
 
 				@try {
 					[fm createDirectoryAtPath:bindir createParents:YES];
 
 				}@catch(OFCreateDirectoryFailedException* e) {
-					[of_stderr writeFormat:@"Faild creating directory: %@\n", [bindir stringByStandardizingPath]];
+					[of_stderr writeFormat:@"%@", e];
 
 					[OFApplication terminateWithStatus:1];
 				}
@@ -276,8 +263,7 @@ OF_APPLICATION_DELEGATE(Bake)
 				[fm copyItemAtPath:file toPath:destination];
 
 			} @catch (OFCopyItemFailedException* e) {
-				[of_stderr writeFormat:@"Faild copy %@ to directory: %@ (Error: %d)\n",
-					e.sourcePath, e.destinationPath, e.errNo];
+				[of_stderr writeFormat:@"%@", e];
 
 				[OFApplication terminateWithStatus:1];
 			}
@@ -316,7 +302,7 @@ OF_APPLICATION_DELEGATE(Bake)
 
 	OFFileManager* fm = [OFFileManager defaultManager];
 
-	if (rebake)
+	if (self.rebake)
 		return YES;
 
 	compiler = [Compiler compilerForFile: file
@@ -331,6 +317,24 @@ OF_APPLICATION_DELEGATE(Bake)
 	objectDate = [fm statusChangeTimeOfItemAtPath: objectFile];
 
 	return ([objectDate compare: sourceDate] == OF_ORDERED_ASCENDING);
+}
+
+- (void)produceIngredientWithArguments:(OFArray OF_GENERIC(OFString*) *)arguments
+{
+	if (arguments.count <= 0) {
+		[of_stderr writeLine:@"Empty ingredient argument!\n"];
+		[OFApplication terminateWithStatus:1];
+	}
+
+	IngredientProducer* producer = [IngredientProducer new];
+
+	for (OFString* argument in arguments) {
+		[producer parseArgument:argument];
+	}
+
+	[of_stdout writeLine:[[producer ingredient] JSONRepresentation]];
+
+	[OFApplication terminate];
 }
 
 @end
