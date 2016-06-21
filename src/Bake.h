@@ -5,12 +5,20 @@
 
 @interface Bake: OFObject
 {
-	Recipe *recipe;
-	BOOL verbose, rebake;
+	Recipe *_recipe;
+	BOOL _verbose, _rebake, _install, _produceIngredient;
+	OFString* _prefix;
 }
+
+@property(assign)BOOL verbose;
+@property(assign)BOOL rebake;
+@property(assign)BOOL install;
+@property(retain)Recipe* recipe;
+@property(assign)BOOL produceIngredient;
+@property(copy)OFString* prefix;
 
 - (void)findRecipe;
 - (BOOL)shouldRebuildFile: (OFString*)file
 		   target: (Target*)target;
-- (BOOL)verbose;
+
 @end

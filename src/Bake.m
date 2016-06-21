@@ -14,63 +14,117 @@
 OF_APPLICATION_DELEGATE(Bake)
 
 @implementation Bake
+
+@synthesize verbose = _verbose;
+@synthesize rebake = _rebake;
+@synthesize recipe = _recipe;
+@synthesize install = _install;
+@synthesize produceIngredient = _produceIngredient;
+@synthesize prefix = _prefix;
+
+- (instancetype)init
+{
+	self = [super init];
+	_recipe = nil;
+	_prefix = nil;
+	_verbose = NO;
+	_rebake = NO;
+	_install = NO;
+	_produceIngredient = NO;
+
+	return self;
+}
+
 - (void)applicationDidFinishLaunching
 {
-	OFArray *arguments;
 	OFSet *conditions;
 	DependencySolver *dependencySolver;
 	OFEnumerator *enumerator;
-	Target *target;
+
 	OFArray *targetOrder;
-	BOOL install;
-	OFString *prefix = @"/usr/local";
-	OFString *bindir = [prefix stringByAppendingString: @"/bin"];
-	OFString *includedir = [prefix stringByAppendingString: @"/include"];
-	OFString *libdir = [prefix stringByAppendingString: @"/lib"];
 
-	arguments = [OFApplication arguments];
-	install = [arguments containsObject: @"--install"];
+	OFString *bindir = nil;
+	OFString *includedir = nil;
+	OFString *libdir = nil;
 
-	if ([arguments containsObject:@"--prefix"]) {
-		size_t idx = [arguments indexOfObject:@"--prefix"];
-		OFString* oldprefix = prefix;
-		OFString* oldbindir = bindir;
-		OFString* oldlibdir = libdir;
-		OFString* oldincdir = includedir;
-		prefix = [arguments objectAtIndex: idx + 1];
-		bindir = [prefix stringByAppendingString: @"/bin"];
-		includedir = [prefix stringByAppendingString: @"/include"];
-		libdir = [prefix stringByAppendingString: @"/lib"];
-		of_log(@"Find prefix %@", prefix);
-		[oldprefix release];
-		[oldbindir release];
-		[oldincdir release];
-		[oldlibdir release];
+	OFString* prefix_ = nil;
+
+	const of_options_parser_option_t options[] = {
+		{ 'h', @"help", 0, NULL, NULL },
+		{ 'v', @"verbose", 0, &_verbose, NULL},
+		{ 'r', @"rebake", 0, &_rebake, NULL},
+		{ '\0', @"produce-ingredient", 0, &_produceIngredient, NULL},
+		{ '\0', @"prefix", 1, NULL, &prefix_},
+		{ '\0', @"install", 0, &_install, NULL},
+		{ '\0', nil, 0, NULL, NULL }
+	};
+
+	OFOptionsParser* optionParser = [OFOptionsParser parserWithOptions:options];
+
+	of_unichar_t option = '\0';
+
+	while ((option = [optionParser nextOption]) != '\0') {
+		switch (option) {
+			case 'h':
+				[of_stdout writeLine:@"Help message."];
+				[OFApplication terminateWithStatus:0];
+				break;
+			case '=':
+				[of_stderr writeFormat:@"%@: Option --%@ takes no argument!\n",
+					[OFApplication programName],
+					[optionParser lastLongOption]];
+				[OFApplication terminateWithStatus:1];
+				break;
+			case '?':
+				if ([optionParser lastLongOption] != nil)
+					[of_stderr writeFormat:@"%@: Unknown option: --%@\n",
+						[OFApplication programName],
+						[optionParser lastLongOption]];
+				else
+					[of_stderr writeFormat:@"%@: Unknown option: -%C\n",
+						[OFApplication programName],
+						[optionParser lastOption]];
+
+				[OFApplication terminateWithStatus:1];
+				break;
+		}
 	}
 
-	if ([arguments containsObject: @"--produce-ingredient"]) {
-		IngredientProducer *producer;
-		OFEnumerator *enumerator;
-		OFString *argument;
+	if (self.produceIngredient) {
+		OFArray OF_GENERIC(OFString*) *remainingArguments;
+		arguments = [optionParser remainingArguments];
 
-		producer = [[IngredientProducer alloc] init];
+		if (arguments.count <= 0) {
+			[of_stderr writeLine:@"Empty ingredient argument!\n"];
+			[OFApplication terminateWithStatus:1];
+		}
 
-		arguments = [arguments
-		    arrayByRemovingObject: @"--produce-ingredient"];
-		enumerator = [arguments objectEnumerator];
-		while ((argument = [enumerator nextObject]) != nil)
-			[producer parseArgument: argument];
+		IngredientProducer* producer = [IngredientProducer new];
 
-		[of_stdout writeLine:
-		    [[producer ingredient] JSONRepresentation]];
+		for (OFString* argument in arguments) {
+			[producer parseArgument:argument];
+		}
+
+		[of_stdout writeLine:[[producer ingredient] JSONRepresentation]];
 
 		[OFApplication terminate];
 	}
 
+	if (prefix_ != nil)
+		self.prefix = prefix_;
+	else
+		self.prefix = @"/usr/local";
+
+	bindir = [self.prefix stringByAppendingString:@"/bin"];
+	includedir = [self.prefix stringByAppendingString:@"/include"];
+	libdir = [self.prefix stringByAppendingString:@"/lib"];
+
+	of_log(@"Find prefix %@", prefix);
+
 	[self findRecipe];
 
 	@try {
-		recipe = [[Recipe alloc] init];
+		self.recipe = [[[Recipe alloc] init] autorelease];
 	} @catch (OFOpenItemFailedException *e) {
 		[of_stderr writeLine: @"Error: Could not find Recipe!"];
 		[OFApplication terminateWithStatus: 1];
@@ -88,16 +142,14 @@ OF_APPLICATION_DELEGATE(Bake)
 					    @"true",
 					    nil];
 
-	verbose = ([arguments containsObject: @"--verbose"] ||
-	    [arguments containsObject: @"-v"]);
-	rebake = ([arguments containsObject: @"--rebake"] ||
-	    [arguments containsObject: @"-r"]);
 
 	dependencySolver = [[[DependencySolver alloc] init] autorelease];
 
-	enumerator = [[recipe targets] objectEnumerator];
-	while ((target = [enumerator nextObject]) != nil)
-		[dependencySolver addTarget: target];
+	@autoreleasepool {
+		for (Target* target in [[self.recipe targets] allObjects]) {
+			[dependencySolver addTarget:target];
+		}
+	}
 
 	@try {
 		[dependencySolver solve];
@@ -110,128 +162,131 @@ OF_APPLICATION_DELEGATE(Bake)
 
 	targetOrder = [dependencySolver targetOrder];
 
-	enumerator = [targetOrder objectEnumerator];
-	while ((target = [enumerator nextObject]) != nil) {
-		OFEnumerator *fileEnumerator;
-		OFString *file;
+	OFAutoreleasePool* pool = [OFAutoreleasePool new];
+	OFFileManager* fm = [OFFileManager defaultManager];
+
+	for (Target* target in targetOrder) {
 		size_t i = 0;
 		BOOL link = NO;
-		OFFileManager* fm = [OFFileManager defaultManager];
 
-		[target resolveConditionals: conditions];
+		[target resolveConditionals:conditions];
 
 		@try {
 			[target addIngredients];
-		} @catch (MissingIngredientException *e) {
-			[of_stderr writeFormat: @"Error: Ingredient %@ "
-						@"missing!\n",
-						[e ingredientName]];
-			[OFApplication terminateWithStatus: 1];
+		}@catch (MissingIngredientException *e) {
+			[of_stderr writeFormat:@"Error: Ingredient %@ missing!\n",
+				[e ingredientName]];
+			[OFApplication terminateWithStatus:1];
 		}
 
-		fileEnumerator = [[target files] objectEnumerator];
-		while ((file = [fileEnumerator nextObject]) != nil) {
-			if (![self shouldRebuildFile: file
-					      target: target]) {
+		@autoreleasepool {
+			for (OFString* file in [target files]) {
+				if (![self shouldRebuildFile:file target:target]) {
+					i++;
+					continue;
+				}
+
+				link = YES;
+
+				if (self.verbose)
+					[of_stdout writeFormat:@"\r%@: %zd/%zd",
+						[target name], i,
+						[[target files] count]];
+
+				@try {
+					Compiler* compiler = [Compiler compilerForFile:file target:target];
+
+					[compiler compileFile:file target:target];
+
+				} @catch (CompilationFailedException *e) {
+					[of_stdout writeString:@"\n"];
+
+					[of_stderr writeFormat:
+						@"Faild to compile file %@!\n"
+						@"Command was:\n%@\n",
+						file, [e command]];
+
+					[OFApplication terminateWithStatus:1];
+
+				}
+
 				i++;
-				continue;
+
+				if (self.verbose)
+					[of_stdout writeFormat:@"\r%@: %zd/%zd",
+						[target name], i,
+						[[target files] count]];
 			}
-
-			link = YES;
-
-			if (!verbose)
-				[of_stdout writeFormat: @"\r%@: %zd/%zd",
-							[target name], i,
-							[[target files] count]];
-
-			@try {
-				Compiler *compiler =
-				    [Compiler compilerForFile: file
-						       target: target];
-
-				[compiler compileFile: file
-					       target: target];
-			} @catch (CompilationFailedException *e) {
-				[of_stdout writeString: @"\n"];
-				[of_stderr writeFormat:
-				    @"Failed to compile file %@!\n"
-				    @"Command was:\n%@\n", file, [e command]];
-				[OFApplication terminateWithStatus: 1];
-			}
-
-			i++;
-
-			if (!verbose)
-				[of_stdout writeFormat: @"\r%@: %zd/%zd",
-							[target name], i,
-							[[target files] count]];
 		}
 
-		if (link || ([[target files] count] > 0 &&
-		    ![fm fileExistsAtPath: [[ObjCCompiler sharedCompiler]
-		    outputFileForTarget: target]])) {
-			if (!verbose)
-				[of_stdout writeFormat:
-				    @"\r%@: %zd/%zd (linking)",
-				    [target name], i, [[target files] count]];
+		if (link || ([[target files] count] > 0 && ![fm fileExistsAtPath:[[ObjCCompiler sharedCompiler] outputFileForTarget:target]])) {
+			if (self.verbose)
+				[of_stdout writeFormat:@"\r%@: %zd/%zd (linking)",
+					[target name], i, [[target files] count]];
 
 			@try {
 				/*
 				 * FIXME: Need to find out which compiler a
 				 *	  target needs to link!
 				 */
-				[[ObjCCompiler sharedCompiler]
-				    linkTarget: target
-				    extraFlags: nil];
+
+				 [[ObjCCompiler sharedCompiler] linkTarget:target extraFlags:nil];
+
 			} @catch (LinkingFailedException *e) {
-				[of_stdout writeString: @"\n"];
+				[of_stdout writeString:@"\n"];
 				[of_stderr writeFormat:
-				    @"Failed to link target %@!"
-				    @"Command was:\n%@\n",
-				    [target name], [e command]];
-				[OFApplication terminateWithStatus: 1];
+					@"Faild to link target %@!\n"
+					@"Command was:\n%@\n",
+					[target name], [e command]];
+
+				[OFApplication terminateWithStatus:1];
+
 			}
 
-			if (!verbose)
+			if (self.verbose)
 				[of_stdout writeFormat:
-				    @"\r%@: %zd/%zd (successful)\n",
-				    [target name], i, [[target files] count]];
-		} else
-			[of_stdout writeFormat: @"%@: Already up to date\n",
-						[target name]];
+					@"\r%@: %zd/%zd (success)\n",
+					[target name], i, [[target files] count]];
 
-		if (install && [[target files] count] > 0) {
-			OFString *file = [[ObjCCompiler sharedCompiler]
-			    outputFileForTarget: target];
-			OFString *destination = [OFString pathWithComponents:
-			    @[bindir, [file lastPathComponent]]];
+		} else {
+			[of_stdout writeFormat:@"\r%@: Already up to date\n", [target name]];
+		}
 
+		if (self.install && [[target files] count] > 0) {
+			OFString* file = [[ObjCCompiler sharedCompiler] outputFileForTarget:target];
+			OFString* destination = [OFString pathWithComponents:@[bindir, [file lastPathComponent]]];
 
-			[of_stdout writeFormat: @"Installing: %@ -> %@\n",
-						file, [destination stringByStandardizingPath]];
+			[of_stdout writeFormat:@"Installing: %@ -> %@\n",
+				file, [destination stringByStandardizingPath]];
 
-			if (![fm directoryExistsAtPath: bindir]) {
-				[of_stdout writeFormat: @"Creating directory: %@\n",
-						[destination stringByStandardizingPath]];
+			if (![fm directoryExistsAtPath:bindir]) {
+				[of_stdout writeFormat:@"Creating directory: %@\n", [bindir stringByStandardizingPath]];
+
 				@try {
-					[fm createDirectoryAtPath: [bindir stringByStandardizingPath]
-						createParents: NO];
+					[fm createDirectoryAtPath:bindir createParents:YES];
+
 				}@catch(OFCreateDirectoryFailedException* e) {
-					[of_stdout writeFormat: @"Faild creating directory: %@\n",
-						[e path]];
-					[OFApplication terminateWithStatus:-1];
+					[of_stderr writeFormat:@"Faild creating directory: %@\n", [bindir stringByStandardizingPath]];
+
+					[OFApplication terminateWithStatus:1];
 				}
 			}
+
 			@try {
-				[fm copyItemAtPath: file
-					toPath: [destination stringByStandardizingPath]];
-			}@catch(OFCopyItemFailedException* e) {
-				[of_stdout writeFormat: @"Faild copy %@ to directory: %@ (Error: %d)\n",
-						[e sourcePath], [e destinationPath], [e errNo]];
-					[OFApplication terminateWithStatus:-1];
+				[fm copyItemAtPath:file toPath:destination];
+
+			} @catch (OFCopyItemFailedException* e) {
+				[of_stderr writeFormat:@"Faild copy %@ to directory: %@ (Error: %d)\n",
+					e.sourcePath, e.destinationPath, e.errNo];
+
+				[OFApplication terminateWithStatus:1];
 			}
 		}
+
+		[pool releaseObjects];
 	}
+
+	[pool release];
 
 	[OFApplication terminate];
 }
@@ -278,8 +333,4 @@ OF_APPLICATION_DELEGATE(Bake)
 	return ([objectDate compare: sourceDate] == OF_ORDERED_ASCENDING);
 }
 
-- (BOOL)verbose
-{
-	return verbose;
-}
 @end
